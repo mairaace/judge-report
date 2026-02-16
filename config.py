@@ -1,15 +1,19 @@
 
 from pathlib import Path
 
-# Modelos evaluados
+# evaluated models
 EVALUATED_MODELS = ['meta-llama_Llama-3.1-70B-Instruct_20260204_174748']
 
-# Rutas base
+# base paths
 PROJECT_ROOT = Path(__file__).parent  # judge-report/
-DATA_BASE_PATH = PROJECT_ROOT / 'data'
-OUTPUT_PATH = PROJECT_ROOT / 'outputs'
+DATA_BASE_PATH = PROJECT_ROOT / 'data' / 'judge_data'
+JUDGES_OUTPUT_PATH = PROJECT_ROOT / 'data' / 'judge_data_processed'  # CSVs procesados de los jueces
+OUTPUT_PATH = PROJECT_ROOT / 'data' / 'outputs'  # Donde guardar resultados
+PILOT_CSV_PATH = PROJECT_ROOT / 'data' / 'pilot.csv'
 
-# Crear directorio de salida si no existe
+# output folder setup
 OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
-M_TOTAL = 100  # presupuesto total de revisión humana
+# total sample size
+M_TOTAL = 100  
+
