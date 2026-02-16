@@ -1,8 +1,4 @@
-'''
-constants for judge analisis and bias correction
-some of these constants are used in the preprocessing and some in the analysis,
-also, some of this constans come から the preprocessing outpuy file
-'''
+
 from pathlib import Path
 
 # Modelos evaluados
