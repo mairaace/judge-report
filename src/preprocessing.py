@@ -1,8 +1,11 @@
+import sys
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict
-from config import EVALUATED_MODELS, DATA_BASE_PATH, OUTPUT_PATH
 
+# Fix path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config.config import EVALUATED_MODELS, DATA_BASE_PATH, OUTPUT_PATH, JUDGES_OUTPUT_PATH
 
 def find_judge_runs(base_path: str, search_models: List[str]) -> Dict[str, List[str]]:
     """Find all judged.csv files for each judge."""
@@ -86,9 +89,9 @@ def load_all_judges_data(base_path: str = None, models: List[str] = None) -> Dic
 
 
 def save_judge_results(results: Dict[str, pd.DataFrame], output_path: str = None) -> None:
-    """Save one CSV file per judge."""
+    """Save one CSV file per judge to judge_data_processed folder."""
     if output_path is None:
-        output_path = str(OUTPUT_PATH)
+        output_path = str(JUDGES_OUTPUT_PATH)
     
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -99,7 +102,52 @@ def save_judge_results(results: Dict[str, pd.DataFrame], output_path: str = None
         df.to_csv(output_file, index=False)
 
 
+def extract_sample_from_judge(judge_df: pd.DataFrame, judge_name: str, sample_size: int = 100, output_path: str = None) -> pd.DataFrame:
+    """
+    Extract a random sample of questions from a judge's data.
+    
+    Args:
+        judge_df: Processed judge dataframe with columns: question, answer, score_hard_truth
+        judge_name: Name of the judge
+        sample_size: Number of questions to sample (default: 100)
+        output_path: Optional path to save the sample. If None, won't save.
+    
+    Returns:
+        DataFrame with columns: question, answer, hard_truth
+    """
+    # Random sample
+    sample_df = judge_df.sample(n=min(sample_size, len(judge_df)), random_state=42)
+    
+    # Select and rename columns
+    result = sample_df[['question', 'answer', 'score_hard_truth']].copy()
+    result.columns = ['question', 'answer', 'hard_truth']
+    
+    # Save if path is provided
+    if output_path is not None:
+        output_path = Path(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        safe_name = judge_name.replace('/', '_').replace(' ', '_')
+        output_file = output_path / f"sample_{safe_name}_{sample_size}.csv"
+        result.to_csv(output_file, index=False)
+        print(f"Sample saved to {output_file}")
+    
+    return result
+
+
 if __name__ == "__main__":
+    # Load all judges data
     results = load_all_judges_data()
+    
     if results:
+        # Save processed results to judge_data_processed/
         save_judge_results(results)
+        
+        # Extract and save 100-question samples to outputs/
+        for judge_name, judge_df in results.items():
+            extract_sample_from_judge(
+                judge_df=judge_df,
+                judge_name=judge_name,
+                sample_size=100,
+                output_path=str(OUTPUT_PATH)
+            )

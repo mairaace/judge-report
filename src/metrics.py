@@ -46,6 +46,7 @@ def calculate_q_metrics(df: pd.DataFrame, pilot_df: pd.DataFrame, judge_name: st
     q1_pilot = ((judge_predictions == 1) & (human_truth == 1)).sum() / positives.sum() if positives.sum() > 0 else 0.0
     q0_pilot = ((judge_predictions == 0) & (human_truth == 0)).sum() / negatives.sum() if negatives.sum() > 0 else 0.0
     
+    
     print(f"{judge_name}: q0={q0_pilot:.4f}, q1={q1_pilot:.4f} (pilot size={len(merged)})")
     return q0_pilot, q1_pilot
 
