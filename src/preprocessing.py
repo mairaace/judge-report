@@ -104,16 +104,7 @@ def save_judge_results(results: Dict[str, pd.DataFrame], output_path: str = None
 
 def extract_sample_from_judge(judge_df: pd.DataFrame, judge_name: str, sample_size: int = 100, output_path: str = None) -> pd.DataFrame:
     """
-    Extract a random sample of questions from a judge's data.
-    
-    Args:
-        judge_df: Processed judge dataframe with columns: question, answer, score_hard_truth
-        judge_name: Name of the judge
-        sample_size: Number of questions to sample (default: 100)
-        output_path: Optional path to save the sample. If None, won't save.
-    
-    Returns:
-        DataFrame with columns: question, answer, hard_truth
+    (temporal function):Extract a random sample of questions from a judge's data.
     """
     # Random sample
     sample_df = judge_df.sample(n=min(sample_size, len(judge_df)), random_state=42)
