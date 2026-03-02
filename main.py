@@ -25,7 +25,7 @@ q1_final = 0.92      # % de acierto del juez en las m1
 # calcular precición corregida con la estimación puntal 
 theta_hat = point_estimator(p_test, q0_final, q1_final)
 
-# calcular intervalo de 
+# calcular intervalo de  confianza
 ci_lower, ci_upper = confidence_interval(
     p=p_test, 
     q0=q0_final, 

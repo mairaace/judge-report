@@ -2,6 +2,7 @@
 Process judge evaluation data and calculate bias metrics.
 '''
 import sys
+import csv
 import pandas as pd
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from typing import Dict, List, Tuple, Optional
-from config.config import M_TOTAL, OUTPUT_PATH, PILOT_CSV_PATH, JUDGES_OUTPUT_PATH
+from config.config import M_TOTAL, OUTPUT_PATH, PILOT_CSV_PATH, JUDGES_OUTPUT_PATH, SAMPLE_CSV_PATH
 from llm_judge_reporting import allocate_calibration_sample
 
 
@@ -164,24 +165,38 @@ def calculate_q_metrics(
 
 def calculate_all_metrics(
     pilot_csv_path: Optional[str] = None,
-    outputs_folder: Optional[str] = None,
+    sample_csv_path: Optional[str] = None,
     judges_folder: Optional[str] = None,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """
     this function get q0, q1 and p for each judge and pooled data and the pilot sample. and then 
     calculate the m0 and m1 for the calibration sample allocation.
+    
+    All judges evaluate the same 30 questions. The sample CSV is a single file that
+    bridges pilot questions → evaluated_model (needed to locate each answer in the judge data).
     """
     if judges_folder is None:
         judges_folder = str(JUDGES_OUTPUT_PATH)
-    if outputs_folder is None:
-        outputs_folder = str(OUTPUT_PATH)
     if pilot_csv_path is None:
         pilot_csv_path = str(PILOT_CSV_PATH)
+    if sample_csv_path is None:
+        sample_csv_path = str(SAMPLE_CSV_PATH)
 
     judges_path = Path(judges_folder)
-    outputs_path = Path(outputs_folder)
+
+    # Load pilot and sample once — shared across all judges.
+    # sample.csv has inconsistent column counts (some rows have an extra score
+    # column). Read with csv module and keep only the first 5 columns so all
+    # rows are captured regardless of whether the extra column is present.
     pilot_df = pd.read_csv(pilot_csv_path)
+    with open(sample_csv_path, newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        headers = next(reader)[:5]
+        rows = [row[:5] for row in reader if row]
+    sample_df = pd.DataFrame(rows, columns=headers)
+    print(f"Piloto cargado : {pilot_csv_path}  ({len(pilot_df)} filas)")
+    print(f"Sample cargado : {sample_csv_path}  ({len(sample_df)} filas)\n")
 
     metrics_results: List[dict] = []
 
@@ -196,16 +211,6 @@ def calculate_all_metrics(
 
         # Load & pool all model CSVs for this judge
         pooled_df = load_judge_pooled(judge_dir)
-
-        # Load the sample CSV for this judge (to bridge pilot → evaluated_model)
-        sample_pattern = f"sample_{judge_name}_*.csv"
-        sample_files = list(outputs_path.glob(sample_pattern))
-        if not sample_files:
-            print(f"  ⚠ No se encontró sample para {judge_name} en {outputs_path}")
-            print(f"    (buscando: {sample_pattern})")
-            continue
-        sample_df = pd.read_csv(sample_files[0])
-        print(f"  Sample cargado: {sample_files[0].name}  ({len(sample_df)} filas)\n")
 
         # p metric (across all models)
         p_test = calculate_p_metric(pooled_df, judge_name)

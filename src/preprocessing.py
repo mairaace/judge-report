@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.config import (
     EVALUATED_MODELS, DATA_BASE_PATH, OUTPUT_PATH,
     JUDGES_OUTPUT_PATH, M_TOTAL, BENCHMARK_CSV_PATH, SAMPLE_COUNTRY,
+    EXTRA_QUESTIONS_PATH,
 )
 
 
@@ -153,12 +154,14 @@ def extract_sample_from_judge(
     output_path: str = None,
     benchmark_csv_path: str = None,
     country: str = None,
+    questions_filter: List[str] = None,
 ) -> pd.DataFrame:
     """
-    For a given judge, pool question/answer pairs from ALL evaluated models,
-    filter to keep only questions from `country` (using the benchmark CSV to
-    identify origin), remove duplicate questions (keep one random model per
-    question), and take a random sample of `sample_size` rows.
+    For a given judge, pool question/answer pairs from ALL evaluated models.
+
+    If questions_filter is provided: filter to exactly those questions (no country
+    filter, no random sampling).
+    Otherwise: filter by country and take a random sample of sample_size rows.
 
     Output columns: question, ground_truth, answer, evaluated_model, País.
     """
@@ -166,12 +169,6 @@ def extract_sample_from_judge(
         benchmark_csv_path = str(BENCHMARK_CSV_PATH)
     if country is None:
         country = SAMPLE_COUNTRY
-
-    # ── Load benchmark to get question → country mapping ──
-    bench_df = pd.read_csv(benchmark_csv_path)
-    bench_df['Pregunta'] = bench_df['Pregunta'].str.strip()
-    country_questions = bench_df[bench_df['País'] == country][['Pregunta', 'País']].drop_duplicates(subset='Pregunta')
-    print(f"Preguntas de {country} en benchmark: {len(country_questions)}")
 
     # ── Pool all models' data together ──
     all_rows = []
@@ -183,27 +180,41 @@ def extract_sample_from_judge(
     pooled['question'] = pooled['question'].str.strip()
     print(f"Total filas pooled (todos los modelos): {len(pooled)}")
 
-    # ── Merge with benchmark to add country and filter ──
-    pooled = pooled.merge(
-        country_questions,
-        left_on='question',
-        right_on='Pregunta',
-        how='inner',
-    )
-    pooled = pooled.drop(columns=['Pregunta'])
-    print(f"Filas después de filtrar por {country}: {len(pooled)}")
-    print(f"Preguntas únicas de {country}: {pooled['question'].nunique()}")
+    if questions_filter is not None:
+        # ── Filter to the provided question list ──
+        questions_filter = [q.strip() for q in questions_filter]
+        pooled['País'] = country or SAMPLE_COUNTRY
+        pooled = pooled[pooled['question'].isin(questions_filter)]
+        print(f"Filas tras filtrar por extra_questions: {len(pooled)}")
+        pooled = pooled.sample(frac=1, random_state=42).reset_index(drop=True)
+        sample_df = pooled.drop_duplicates(subset='question', keep='first').reset_index(drop=True)
+        suffix = "extra"
+    else:
+        # ── Load benchmark to get question → country mapping ──
+        bench_df = pd.read_csv(benchmark_csv_path)
+        bench_df['Pregunta'] = bench_df['Pregunta'].str.strip()
+        country_questions = bench_df[bench_df['País'] == country][['Pregunta', 'País']].drop_duplicates(subset='Pregunta')
+        print(f"Preguntas de {country} en benchmark: {len(country_questions)}")
 
-    # ── Remove duplicate questions: keep one random (question, model) pair ──
-    pooled = pooled.sample(frac=1, random_state=42).reset_index(drop=True)
-    pooled_unique = pooled.drop_duplicates(subset='question', keep='first')
-    print(f"Filas tras eliminar preguntas duplicadas: {len(pooled_unique)}")
+        pooled = pooled.merge(
+            country_questions,
+            left_on='question',
+            right_on='Pregunta',
+            how='inner',
+        )
+        pooled = pooled.drop(columns=['Pregunta'])
+        print(f"Filas después de filtrar por {country}: {len(pooled)}")
+        print(f"Preguntas únicas de {country}: {pooled['question'].nunique()}")
 
-    # ── Random sample (without replacement) ──
-    sample_df = pooled_unique.sample(
-        n=min(sample_size, len(pooled_unique)),
-        random_state=42,
-    ).reset_index(drop=True)
+        pooled = pooled.sample(frac=1, random_state=42).reset_index(drop=True)
+        pooled_unique = pooled.drop_duplicates(subset='question', keep='first')
+        print(f"Filas tras eliminar preguntas duplicadas: {len(pooled_unique)}")
+
+        sample_df = pooled_unique.sample(
+            n=min(sample_size, len(pooled_unique)),
+            random_state=42,
+        ).reset_index(drop=True)
+        suffix = str(sample_size)
 
     print(f"Muestra final: {len(sample_df)} filas")
 
@@ -212,7 +223,7 @@ def extract_sample_from_judge(
         output_path = Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
         safe_name = judge_name.replace('/', '_').replace(' ', '_')
-        output_file = output_path / f"sample_{safe_name}_{sample_size}.csv"
+        output_file = output_path / f"sample_{safe_name}_{suffix}.csv"
         sample_df.to_csv(output_file, index=False)
         print(f"Muestra guardada: {output_file}")
 
@@ -227,11 +238,23 @@ if __name__ == "__main__":
         # Save processed results: one folder per judge, one CSV per model
         save_judge_results(results)
 
-        # Extract random 100-question sample per judge 
-        for judge_name, models_dict in results.items():
-            extract_sample_from_judge(
-                models_dict=models_dict,
-                judge_name=judge_name,
-                sample_size=M_TOTAL,
-                output_path=str(OUTPUT_PATH)
-            )
+        # Use only the first judge for both samples
+        first_judge_name, first_judge_models = next(iter(results.items()))
+        print(f"\nUsando primer juez: {first_judge_name}")
+
+        # Sample de 100 preguntas (filtrado por país)
+        extract_sample_from_judge(
+            models_dict=first_judge_models,
+            judge_name=first_judge_name,
+            sample_size=M_TOTAL,
+            output_path=str(OUTPUT_PATH),
+        )
+
+        # Sample de extra_questions
+        extra_questions = pd.read_csv(EXTRA_QUESTIONS_PATH)["question"].tolist()
+        extract_sample_from_judge(
+            models_dict=first_judge_models,
+            judge_name=first_judge_name,
+            output_path=str(OUTPUT_PATH),
+            questions_filter=extra_questions,
+        )
